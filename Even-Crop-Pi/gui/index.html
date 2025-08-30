@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Even Crop v1.0</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌱</text></svg>">
+</head>
+<body>
+  <!-- Splash / boot -->
+  <div id="splash" class="splash">
+    <div class="splash-inner">
+      <img src="./assets/logo.png" alt="Even Crop" class="logo" />
+      <h1>Even Crop v1.0</h1>
+      <p>Liquid fert application &amp; monitoring</p>
+      <div class="spinner" aria-hidden="true"></div>
+      <div class="boot-msg" id="bootMsg">Initializing…</div>
+    </div>
+  </div>
+
+  <!-- App chrome -->
+  <header class="topbar">
+    <div class="brand">
+      <img src="./assets/logo.png" alt="" class="logo-sm" />
+      <span class="name">Even Crop</span>
+      <span class="ver">v1.0</span>
+    </div>
+
+    <nav class="tabs" id="tabs">
+      <button data-route="dashboard" class="tab active" id="tabDash" data-i18n="tab.dashboard">Dashboard</button>
+      <button data-route="calibration" class="tab" id="tabCal" data-i18n="tab.calibration">Calibration</button>
+      <button data-route="settings" class="tab" id="tabSet" data-i18n="tab.settings">Settings</button>
+      <button data-route="gpio" class="tab" id="tabGpio" data-i18n="tab.gpio">GPIO</button>
+    </nav>
+
+    <div class="toolbar">
+      <select id="langSel" title="Language">
+        <option value="en">English</option>
+        <option value="lt">Lietuvių</option>
+      </select>
+    </div>
+  </header>
+
+  <main id="view" class="view" tabindex="-1" aria-live="polite"></main>
+
+  <footer class="foot">
+    <span>Corndog Engineering</span>
+    <span class="sep">•</span>
+    <span id="connBadge" class="pill">WS: …</span>
+    <span class="sep">•</span>
+    <a href="#" id="mockLink" class="link">Mock</a>
+  </footer>
+
+  <!-- App scripts -->
+  <script type="module">
+    import { initAPI, onEvent } from './api.js';
+    import { mount, navigate } from './app.js';
+    import { currentLang, setLang, applyTranslations, loadLanguage } from './i18n.js';
+
+    const splash = document.getElementById('splash');
+    const bootMsg = document.getElementById('bootMsg');
+    const view = document.getElementById('view');
+    const tabs = document.getElementById('tabs');
+    const langSel = document.getElementById('langSel');
+    const connBadge = document.getElementById('connBadge');
+    const mockLink = document.getElementById('mockLink');
+
+    // Language init
+    langSel.value = currentLang();
+    langSel.onchange = async ()=>{
+      await setLang(langSel.value);
+      applyTranslations(document.body);
+    };
+
+    // Tab routing
+    tabs.querySelectorAll('.tab').forEach(btn=>{
+      btn.onclick = ()=>{
+        tabs.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        navigate(btn.dataset.route);
+        view.focus({preventScroll:true});
+      };
+    });
+
+    // Mock link toggler
+    mockLink.onclick = (e)=>{
+      e.preventDefault();
+      const hasMock = /\bmode=mock\b/i.test(location.search);
+      const url = new URL(location.href);
+      if(hasMock){
+        url.searchParams.delete('mode');
+      }else{
+        url.searchParams.set('mode','mock');
+      }
+      location.href = url.toString();
+    };
+
+    // Connection status updates (optional)
+    onEvent(ev=>{
+      if(ev?.ev==='auto-delay'){ /* handled in dashboard */ }
+    });
+
+    // Boot
+    (async ()=>{
+      await loadLanguage(currentLang());
+      applyTranslations(document.body);
+
+      // show splash briefly while API initializes
+      splash.style.display = 'flex';
+      bootMsg.textContent = 'Initializing…';
+
+      try{
+        await initAPI();
+        connBadge.textContent = 'WS: ready';
+      }catch(e){
+        connBadge.textContent = 'WS: mock';
+      }
+
+      // mount default (Dashboard), then fade out splash
+      mount('dashboard');
+      setTimeout(()=>{ splash.classList.add('hide'); }, 700);
+      setTimeout(()=>{ splash.style.display='none'; }, 1200);
+    })();
+  </script>
+
+  <!-- Feature modules (loaded by app.js as needed) -->
+  <script type="module" src="./app.js"></script>
+  <script type="module" src="./state.js"></script>
+  <script type="module" src="./i18n.js"></script>
+  <script type="module" src="./api.js"></script>
+  <script type="module" src="./components.modal.js"></script>
+  <script type="module" src="./ui.dashboard.js"></script>
+  <script type="module" src="./ui.calibration.js"></script>
+  <script type="module" src="./ui.settings.js"></script>
+  <script type="module" src="./ui.gpio.js"></script>
+</body>
+</html>

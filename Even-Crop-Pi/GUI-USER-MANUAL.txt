@@ -1,0 +1,201 @@
+Even Crop v1.0 — GUI + Brain Manual
+Corndog Engineering
+
+============================================================
+1) OVERVIEW
+============================================================
+Even Crop is a headless-capable liquid fertilizer application
+and monitoring system. The Pi (“Brain”) sequences units and
+serves a web GUI. You can run the Brain without any client
+connected; when a phone/tablet/PC connects, it shows live
+telemetry and lets you adjust settings instantly.
+
+Key ideas
+- Target is ml/plant PER CYCLE.
+- Modes: Flow (pulses) or Timed (ms/ml).
+- Patterns: Diamond/Diagonal/Line (Brain-level; GUI exposes
+  Diamond-specific controls and timing offsets).
+- Temporary “tramline” OFFs are per-unit ignores on Dashboard.
+- Persistent enable/disable lives in Settings.
+
+============================================================
+2) QUICK START
+============================================================
+1. Start server (on Pi):
+   python3 brain/server.py
+
+2. Open GUI:
+   http://<pi-ip>:8000   (or http://localhost:8000 on Pi)
+
+3. Optional mock mode (no Brain/WebSocket):
+   http://<host>:8000/?mode=mock
+
+4. First steps:
+   - Settings → enable the units you have.
+   - Set Delivery Mode (Flow/Timed).
+   - Calibration → run Cal. Flow or Cal. Timed to tune.
+   - Dashboard → set Target (ml/plant), Start.
+
+============================================================
+3) NAVIGATION
+============================================================
+Tabs: Dashboard • Calibration • Settings • GPIO
+Language picker: English / Lietuvių (GUI text only).
+
+Splash screen appears briefly on load while the app connects.
+
+============================================================
+4) DASHBOARD
+============================================================
+Telemetry KPIs:
+- Flow (L/min), Pressure (bar), Speed (km/h) with LOW/OK/HIGH badges.
+- Target (ml/plant): click “Adjust” to set system target.
+
+Run & Sim:
+- Start / Stop: start or halt sequencing.
+- Sim Telemetry: GUI generates plausible live numbers.
+- Sim Cycles: Brain simulates cycles as if switches fire regularly.
+
+Diamond Timing:
+- Auto/Manual Δ chip shows current B-row delay (ms).
+- In Auto, Brain updates Δ from recent press cadence + any geometric lead.
+
+Alarms:
+- 🔔 toggle: soft mute/unmute buzzer.
+- Alarm OFF (mute buzzer): hard mute; suppresses buzzer entirely.
+
+NEW – Tramline Presets:
+- A slim tile with two full-width buttons in one row:
+  ⬅️ Left   |   Right ➡️
+  Each side stores a preset of temporary OFF units to reduce tap fatigue.
+  Behavior (per side):
+  - Press when you currently have any units OFF:
+    • Captures current OFF pattern as that side’s preset and applies it.
+  - Press again (same side):
+    • Clears to ALL ON.
+  - Press once more:
+    • Re-applies that side’s preset.
+  Only one side can be active at a time; pressing the other switches over.
+
+Units Card (separate card under presets):
+- Shows ENABLED units only, grouped visually by momentary switch (M1/M2/M3).
+- Each tile shows:
+  • Unit number (compact index), Status badge, Last (ml), Δ%.
+  • ON/OFF button = temporary tramline override (does not change Settings).
+- Clear Tramline Overrides: sets all back to ON.
+
+Status meanings (Brain-driven thresholds):
+- OK: within ±2–5% of target.
+- WARN: mild deviation.
+- INSPECT: 6–15% deviation.
+- BLOCKED: >15% deviation or two consecutive misses — buzzer sounds unless muted.
+- IGNORED: temporarily OFF via tramline.
+
+============================================================
+5) CALIBRATION
+============================================================
+Main table shows ENABLED units with live-editable fields:
+
+Columns:
+- Mode: Inherit (follows global), Flow, Timed.
+- Pulses/Cycle (Flow mode).
+- ms per ml (Timed mode).
+- NEW: Per-unit delay (ms)
+  • Always added to timing on top of pattern base and momentary offset.
+  • Diamond rules:
+    - Group A: 0 … 1000 ms (may delay only; cannot advance).
+    - Group B: −(current B-delay) … +1000 ms (may advance up to coincide with A).
+    - If Auto Δ changes, B’s negative bound live-updates and the input clamps.
+- Last (ml), Δ% mirrors Dashboard.
+- Actions:
+  • Cal. Flow: Brain dispenses ≈1000 ml by pulses → enter measured ml →
+    GUI computes new Pulses/Cycle → repeat until ±5%.
+  • Cal. Timed: 10 s countdown → 5 s squirt → enter measured ml →
+    GUI sets ms/ml = 5000/ml → repeat until ±5%.
+  • Flush: start/stop manual flush.
+
+Global Momentary Offsets:
+- M1/M2/M3 offset %: 0–100% = 0–1000 ms, applied on top of per-unit delay.
+- These apply in all patterns/modes.
+
+Timing formula used by Brain:
+  fire_time = press_time
+            + pattern_base(unit)          # e.g., 0 for A, BΔ for B (Diamond)
+            + momentary_offset_ms(Mx)     # 0–100% → 0–1000 ms
+            + per_unit_delay_ms           # this new field
+
+============================================================
+6) SETTINGS
+============================================================
+Profile (UI only unless Brain profiles enabled):
+- Shows Active profile (or UNSAVED PROFILE).
+- Save, Save As…, Load, Export, Import (JSON when wired).
+
+Units list (column):
+- Tap row to enable/disable unit (persistent).
+- Controls:
+  • Group: A/B (Diamond positioning).
+  • Momentary: None / M1 / M2 / M3.
+  • Offset % (legacy per-unit percentage; independent of per-unit delay ms).
+
+Delivery Mode:
+- Flow (pulses) or Timed (ms/ml).
+- Units set to “Inherit” follow this global choice.
+
+Diamond Delay:
+- Auto Diamond Delay (on/off).
+- Manual B-delay (ms) and Geometric lead (ms).
+- Live B-delay chip mirrors the active value.
+
+Event Log:
+- 10 rows visible per page; keeps up to 100 most recent.
+- Newer/Older pagination, Save (download JSON), Clear.
+
+============================================================
+7) GPIO (PIN-PROTECTED)
+============================================================
+Access requires PIN 5005 (keypad). Relocks when you leave the page.
+
+Mappings:
+- Core: FlowMeter pin, Buzzer pin.
+- Switches: M1, M2, M3 input pins.
+- Units: output pins for Unit 1…11.
+
+Changes are sent immediately to the Brain for hardware setup.
+
+============================================================
+8) SIMULATION & PERSISTENCE
+============================================================
+Simulation:
+- GUI mock: add ?mode=mock to URL or GUI auto-falls back if WS fails.
+- Brain sim cycles: “Sim Cycles” button generates regular press cadence.
+
+Persistence:
+- GUI stores UI bits (e.g., language) in localStorage.
+- Brain stores operational config in /data/state.json so headless runs
+  resume with latest settings after power loss.
+
+============================================================
+9) TOUCH & ACCESSIBILITY
+============================================================
+- Buttons and numeric inputs are sized for gloved field use.
+- Modals keep big actionable buttons and large countdown numerals.
+- Avoids swipe-to-change-screen to prevent accidental panel changes.
+
+============================================================
+10) TROUBLESHOOTING
+============================================================
+- “Initializing” forever: WebSocket blocked — try ?mode=mock or check
+  that brain/server.py is running and reachable at /ws.
+- No units on Dashboard: enable units in Settings first.
+- Calibration modal closes too early: ensure values are entered; it
+  remains open until ±5% success message appears in the dialog.
+- Alarm keeps buzzing: acknowledge by muting (🔔) or hard mute (checkbox),
+  then resolve underlying BLOCKED condition.
+
+============================================================
+11) SAFETY
+============================================================
+- Always verify dosing with physical measurements after changes.
+- Use Sim Cycles in the yard to validate offsets before field work.
+- Ensure correct GPIO mapping before connecting valves/solenoids.

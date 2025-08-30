@@ -1,0 +1,258 @@
+so... 
+some of the functions not working as correctly so we need to redo some of them. In the GPIO screen it only asks for 1 flow meter. every solenoid will have flow meters on. Every flow meter needs that option to add the F ratio as diferent meters could have a diferent ratio per pulse and stuff. heres my current ( Frequency: F=7.5 * Q (L / Min) error: ± 2% , current can not exceed 10mA, 450 output pulses/liters. F=onstant * units of flow (L / min) * time (seconds) ) Settings screen need tidying up. In the units section we will remove the individual Offset from this page as we will be moving it to Calibration screen. Instead lets split the screen in half and on left we have them unit enable disable. We will remove switch assignement and group asignements as that already in Calibration screen. Left side will have the units to enable an disable as they are. A separate tab on right will be Delivery and Diamond timing. In there we are still missing the other 2 options we discused. This is where we need to select what patern to aply and if Diamond is selected the Diamont Options apear. Calibration Screen Last ml and deviation % can go as we see that on Dashboard and they are sort off known in the backround anyway. Pulse/Cucle boxes to be way smaller (5 digits long) Ms/ml boxes Smaller too (3 digits long) Per unit delay rename to Offset like i mentioned above in Settings corection notes. Input Boxes way smaller please, The little value under input to stay with actual ms info but the Input box to be percentage, do maths in background obviously. Call flow, Call timed needs to be 1 button called Calibration and depending in what mode unit will be it will call the wizard that needs to be called. or yet better still the wizard will calibrate flow meter and on top calibrate timed anyway so both values can be there. Flow wizard needs fixes. It needs to be just like timed where it counts down from 10 to 0 and then outputs what it thinks is 1000ml and asks user to enter actualy collected amount. Then calculations happen and after a new value is generated it keeps persisting recalibreating untill within spec. Obviously the new value to be saved and new F ratio calculated saved too. Without question when in GPIO screen the values to be displayed if amended by Calibration wizard. The Flush buttons are great but we are still missing Flush ALL, Flush A, Flush B. That can go under the units in a separate box. Global momentary ofsets can go to the Right side of the screen taking as small amount of the screen with only enabled switches shown. and a value is displayed that can be entered or 2 buttons + - displayed to help increase decrease value. Dashboard screen. Obviously im in Mock mode but Start Stop buttons do fuck all. Sim Telemtry changes togle but no effect on anything. The Left and Righ buttons presets work but when pressed again do not unpress and does not. Only able to unpress after i Clear selections. Need to make that a button so it sort of stays pressed and when pressed again becomes unpressed and clears to state as if no buttons are pressed. Changes all of above + Obviously without forgeting to impliment the clean, field-friendly way to do “one screen + dev devices”, auto-open GUI on connect, and always run headless functions. Maybe lets add a special button for Mock only so we can test theoretical speed error to warn drivers to fast, and show posible momentary switch failures. Special mock mode sim basicaly that runs cycles for 10 seconds withn 0 - 2 % deviation then random unit gets a warning or inspect. then after a few more seconds a unit gets blocked, then few units blocked. 15 to 20 seconds in Speed is higher than cycles can run complete. that for 3 seconds or so. and then maybe get a momentary switch error displayed for 5 seconds. cycle repeats on loop untill sim turned off. None of these sim MOCK only buttons to be displayed in live version. First generate plan for changes and then i will ask for full code file by file. But make plan first
+
+Thought for 52s
+
+Awesome—here’s a crisp plan to refactor the GUI/Brain so it matches exactly what you want. No code yet; this is the blueprint we’ll follow file-by-file next.
+
+0) Data model tweaks (state & Brain)
+
+Per-unit flow meter constants
+
+units[i].pulsesPerLiter (number, default 450)
+
+units[i].hzPerLpm (derived/display only = pulsesPerLiter/60 or edited if vendor gives K directly)
+
+Per-unit delivery
+
+Already: pulsesPerCycle, msPerMl, mode: 'flow'|'timed'|'inherit'
+
+Timing/offsets
+
+units[i].offsetPct (0–100) — NEW (replaces perDelayMs as user-facing)
+
+units[i].perDelayMs stays but is derived = clampForGroup(offsetPct*10); we keep it to feed the Brain.
+
+Pattern
+
+pattern: 'line'|'diagonal'|'diamond'
+
+diamond: { auto:true, manualMs:500, geomLeadMs:0, currentMs:… } (we already have autoDelay, we’ll rename in UI)
+
+Session gating (one screen + dev)
+
+Server runtime: session.primary IP holder; dev bypass list (MACs) and ?dev=5005 token supported.
+
+Migrations: when loading old state, seed offsetPct = Math.max(0, Math.min(100, Math.round(perDelayMs/10))); if no pulsesPerLiter, default 450.
+
+1) GPIO screen (PIN-locked)
+
+Goal: every unit has both a solenoid output and a flow-meter input; show the flow constants near each; editable if needed.
+
+Layout changes
+
+Table becomes three columns:
+
+“Signal”
+
+“BCM Pin”
+
+“Flow constants (read-only if calibrated, editable otherwise)”
+
+Rows:
+
+Fixed signals: Buzzer, M1/M2/M3 inputs (unchanged)
+
+Per unit:
+
+Unit n (output) → pin
+
+Unit n flow (input) → pin
+
+On the same row (or sub-row) small inputs:
+
+PPL (pulses per liter) default 450
+
+F (Hz/L/min) default derived (PPL/60)
+
+If wizard updated the constants, show a “✓ calibrated” chip.
+
+Actions:
+
+Apply to Brain pushes both pin map + any changed PPL/Hz constants.
+
+Constants are also saved by the Calibration wizard; GPIO page reflects them instantly.
+
+Backend
+
+New setters:
+
+setUnitFlowPin(id, pin)
+
+setUnitPPL(id, value) and setUnitHzPerLpm(id, value) (only one is needed; we derive the other)
+
+2) Settings screen (tidy & split)
+
+Left column: Units
+
+Simple list of 1..11 with enable/disable toggle only.
+
+Remove per-unit Group and Momentary here (moved to Calibration).
+
+Remove per-unit Offset here (moved to Calibration).
+
+Right column: Delivery & Pattern
+
+Delivery Mode: Flow / Timed (global default; unit can still override in Calibration)
+
+Pattern selector: Line, Diagonal, Diamond
+
+If Diamond:
+
+Auto Diamond Delay (checkbox)
+
+Manual Δ (ms) (only if Auto off)
+
+Geometric lead (ms) (always visible)
+
+Global momentary offsets moved here but compact on the right edge:
+
+Only show enabled momentaries
+
+% inputs with + / − buttons; hint underneath shows xx ms
+
+Event Log stays on Settings (bottom), unchanged.
+
+3) Calibration screen (smaller, focused, live)
+
+Table columns (compact)
+
+# | Mode (inherit/flow/timed) | Pulses/Cycle (5-ch width) | ms/ml (3-ch width) | Offset % (tiny input, 0–100) + small hint = X ms
+
+Group (A/B) and Momentary (M1/2/3) move here (drop-downs per row).
+
+Remove “Last ml” and “Δ%” columns.
+
+Row actions
+
+Calibration (single button):
+
+Combined wizard:
+
+Countdown 10→0
+
+Phase A (timed): squirt for 5 s → user enters ml → compute & update msPerMl
+
+Phase B (flow): compute how long/pulses are needed for 1000 ml; run; user enters ml (and pulses if you want) → update pulsesPerCycle and also derive pulsesPerLiter and hzPerLpm
+
+Loops until within ±5% (shows current error). Dialog stays open.
+
+Mode on the unit simply decides what the Brain uses during operation; both numbers are maintained.
+
+Flush box (under table)
+
+Buttons: Flush ALL, Flush A, Flush B
+
+Sends Brain commands to open the relevant valves for N ms (inline slider or fixed 2000 ms with a small numeric input).
+
+Live updates
+
+When a value changes, update the table row immediately; GPIO page reflects new PPL/F constants instantly.
+
+4) Dashboard fixes & Mock tools
+
+Telemetry/Run
+
+Start/Stop must pause/resume cycles in mock too (currently cycle timer ignores running).
+
+Sim Telemetry only affects telemetry; add separate “Mock Scenario” panel visible only in mock:
+
+Button Start Scenario/Stop Scenario
+
+Scenario loop (~30–40 s):
+
+0–10 s: all units ~0–2% deviation
+
+10–15 s: set one unit WARN/INSPECT
+
+15–20 s: escalate to one BLOCKED (buzzer starts after 2 cycles)
+
+20–25 s: multiple BLOCKED
+
+25–28 s: “Speed too high” (show KPI badge HIGH + event)
+
+28–33 s: “Momentary switch fault” (fake M2 missing edges) → pop message
+
+Repeat
+
+None of this is built in live mode.
+
+Tramline preset buttons (Left/Right)
+
+Make toggle behavior explicit:
+
+First press with some OFF → captures and applies (button lights).
+
+Press same button again → clear (turns off highlight and clears tramline).
+
+Press the other button → apply the other preset (switch highlight).
+
+Add a small “Captured: N units” chip below each.
+
+5) One-screen + dev devices + captive “auto-open”
+
+(We’ll keep as previously designed; just fold into the new server snapshot.)
+
+WS gate reserves first non-dev client as “screen”; dev MACs (list) or ?dev=5005 bypass; release on disconnect.
+
+dnsmasq + /generate_204 & /hotspot-detect.html endpoints → phone opens GUI automatically on join.
+
+Show a friendly “Screen busy” page to second non-devs.
+
+6) File-by-file impact (so we sequence work cleanly)
+
+GUI
+
+state.js — schema: add pulsesPerLiter, hzPerLpm, offsetPct; add pattern; migrate perDelayMs→offsetPct
+
+api.js — new setters/getters:
+
+setUnitFlowPin, setUnitPPL, setUnitHzPerLpm
+
+setPattern(pattern), rename setAutoDiamond→setDiamondCfg (or keep API but map in UI)
+
+flushAll/flushGroup('A'|'B')
+
+ui.gpio.js — new dual pin rows per unit, constants column, save/apply logic
+
+ui.settings.js — split layout (left Units, right Delivery/Pattern + momentary offsets), remove per-unit group/momentary here
+
+ui.calibration.js — compact columns; rename Per-unit delay → Offset %; combined Calibration wizard; add Flush ALL/A/B box
+
+ui.dashboard.js — tramline toggle logic; Start/Stop respected by mock cycles; Mock Scenario panel
+
+styles.css — small input widths, two-column settings layout, chips, compact table tweaks
+
+Brain (server)
+
+WS session guard (primary vs dev)
+
+New WS/API commands: set unit flow pin, set PPL/Hz, set pattern, flush group/all, start/stop scenario (mock only)
+
+Captive-portal endpoints
+
+Mock engine respects running and adds scenario state machine
+
+7) Acceptance criteria (what we’ll verify)
+
+GPIO
+
+Each unit has both OUT pin and FLOW pin field; editing PPL instantly updates summary; wizard changes reflect here.
+
+Settings
+
+Left column toggles enable/disable; right column selects delivery mode & pattern; diamond options appear only when selected; momentary offsets on the right edge with +/-.
+
+Calibration
+
+Table is compact; per-unit Offset is % with ms hint; single Calibration button loops until ≤±5%; both ms/ml and pulses derived & saved; “Flush ALL/A/B” works.
+
+Dashboard
+
+Start/Stop actually pauses/resumes mock cycles; presets toggle correctly; Mock Scenario produces the described sequence; buzzer mutes behave.
+
+Connections
+
+First non-dev wins; second non-dev gets “busy” page; dev always allowed; connecting phone auto-opens GUI via captive trigger.
+
+If this plan looks right, say “Generate” and I’ll start delivering the updated files one by one (state → API → GPIO → Settings → Calibration → Dashboard → CSS → server stubs), ready to paste.
